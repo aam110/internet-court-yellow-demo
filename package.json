@@ -1,0 +1,21 @@
+{
+  "name": "internet-court-yellow-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "GenLayer Mission 101 — Internet Court dispute judge over a Yellow settlement room",
+  "scripts": {
+    "deploy:contract": "tsx scripts/deploy-contract.ts",
+    "demo": "tsx demo/settle-dispute.ts"
+  },
+  "dependencies": {
+    "@yellow-org/sdk": "^1.4.0",
+    "decimal.js": "^10.6.0",
+    "genlayer-js": "^2.0.0-rc.3",
+    "viem": "^2.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
