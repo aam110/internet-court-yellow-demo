@@ -6,11 +6,14 @@
   "description": "GenLayer Mission 101 — Internet Court dispute judge over a Yellow settlement room",
   "scripts": {
     "deploy:contract": "tsx scripts/deploy-contract.ts",
-    "demo": "tsx demo/settle-dispute.ts"
+    "demo": "tsx demo/settle-dispute.ts",
+    "check:gates": "tsx scripts/check-settlement-gates.ts",
+    "test:contract": "tsx scripts/test-contract.ts"
   },
   "dependencies": {
     "@yellow-org/sdk": "^1.4.0",
     "decimal.js": "^10.6.0",
+    "dotenv": "^18.0.10",
     "genlayer-js": "^2.0.0-rc.3",
     "viem": "^2.0.0"
   },

@@ -40,15 +40,51 @@ decides the final allocation. Remove the court and the room has no way to
 split contested funds — the quorum rule means no single party can move
 money alone, and the contract's verdict is what both parties sign.
 
-## Live status (verified 21 Nov 2026)
+## Steward response (28 Nov 2026) — what changed for the Projects review
+
+Steward zoefunds (27 Nov 2026) asked for three things before the
+11 Dec 2026 deadline; all three are done and linked here:
+
+1. **Validator agreement covers the split percentage.** The judge's
+   equivalence principle is now *"The values of verdict and
+   split_buyer_pct have to match"* (was: verdict only), so validators
+   agree on the percentage that controls payment, not just the label.
+   The contract also validates strictly: the percentage must be a JSON
+   integer 0–100 (`release` must carry 0, `refund` must carry 100); any
+   other value is rejected, never silently rewritten — the stored
+   percentage is exactly the agreed one.
+2. **Settlement is gated.** `demo/settlement-gate.ts` blocks settlement
+   unless BOTH court transactions succeeded (receipt resultName is
+   exactly `FINISHED_WITH_RETURN` — a tx hash alone proves nothing: a
+   failed judge call still returns a hash, with `FINISHED_WITH_ERROR`)
+   AND the verdict is judged with a valid percentage. `demo/settle-dispute.ts`
+   calls the gate before any Yellow call. Failed, unjudged, and
+   invalid-percentage cases all abort with a clear error.
+3. **`.env` setup fixed + documented.** The documented flow
+   (`cp .env.example .env`, then `npm run demo`) previously did NOT
+   load `.env` at all — nothing read it. All entry points now load it
+   via `dotenv` (verified — see "Environment setup"), and the explicit
+   export step is documented as a fallback.
+4. **Checks:** `scripts/check-settlement-gates.ts` proves the gates with
+   real runs — **18/18 checks passed** (15 pure + 3 live on Studio
+   Next), including a live failed judge tx, a live unjudged dispute,
+   and a live judged verdict. See "Settlement-gate checks" below.
+
+## Live status (verified 28 Nov 2026)
 
 | Piece | Status |
 |---|---|
-| GenLayer contract deployed (Studio Next, chain 61997) | ✅ `0xDC0090058Fac7986370b4870e07cc3e2fa1BA68f` — [explorer](https://explorer-studio-dev.genlayer.com/address/0xDC0090058Fac7986370b4870e07cc3e2fa1BA68f) |
-| Deploy tx | `0x60964770ebca8e4f3e4aef014819e472e46acdb1de360f4ce5315191600a5e77` |
-| Dispute filed + judged on-chain (run 1) | ✅ verdict `split`, 50% to buyer — judge tx `0x8056414fd36815159e36539ae63cc5604ff89ac3c1c2f70e93bee57ce2ee946a` |
-| Dispute filed + judged on-chain (run 2) | ✅ verdict `split`, 50% to buyer — judge tx `0x621e73c13ea09e096a6d0c76aca7116240655bf67f6793a38a920a6955cc2767` |
+| GenLayer contract deployed (Studio Next, chain 61997) — **v2, current** | ✅ `0x9d886f66a042Ce1d96Bd32e58360c7233F4370b9` — [explorer](https://explorer-studio-dev.genlayer.com/address/0x9d886f66a042Ce1d96Bd32e58360c7233F4370b9) |
+| Deploy tx (v2) | `0x692c3b1c7ac2cd61a4dddd16bd8ee555320318dabd1f89eb086440d0495b4246` |
+| Dispute filed + judged on-chain, v2 contract (run 1) | ✅ verdict `split`, 50% to buyer — judge tx `0x7aa1ec9b47c1e96834d074a0d4933d4d0610c85773e019a9955d424684957c4e` |
+| Dispute filed + judged on-chain, v2 contract (checks run) | ✅ verdict `split`, 50% to buyer — judge tx `0xaf0a4f92ad61b3d7f0a2f56bc9a0693d132a4b49d28c5bc2d3c925ec44196586` |
+| Settlement-gate checks | ✅ **18/18 passed** (15 pure + 3 live) — `npm run check:gates` |
 | Yellow room open → deposit → verdict split → close | 🟡 code-complete, **awaiting sandbox YUSD faucet** (see below) |
+
+Superseded v1 contract (still live, kept for the record):
+`0xDC0090058Fac7986370b4870e07cc3e2fa1BA68f`, deploy tx
+`0x60964770ebca8e4f3e4aef014819e472e46acdb1de360f4ce5315191600a5e77`,
+judge txs `0x8056414f…` and `0x621e73c1…` (both split, 50% to buyer).
 
 Example verdict reasoning (real, from run 2 — validators, not scripted):
 
@@ -62,9 +98,9 @@ Example verdict reasoning (real, from run 2 — validators, not scripted):
 The demo's Yellow half needs 0.01 test YUSD in the buyer's account. The
 sandbox faucet (`https://nitronode-sandbox.yellow.org/v1/playground/`,
 API `POST /v1/faucet-app/requestTokens`) returned **HTTP 503** on every
-attempt on 21 Nov 2026 — the faucet service itself is down, so the live
-room run could not be completed from this machine yet. The full code path
-is written and type-checked; the moment the faucet is back, `npm run demo`
+attempt on 21 Nov 2026 — and again when re-checked on 28 Nov 2026 — the
+faucet service itself is down, so the live room run could not be completed
+from this machine yet. The full code path is written and type-checked; the moment the faucet is back, `npm run demo`
 runs end-to-end. If you are reproducing this and the faucet is up, the
 funding step is: connect a disposable wallet in the playground, drip YUSD,
 and (only if the faucet funds on-chain rather than the channel) a little
@@ -87,6 +123,28 @@ cd internet-court-yellow-demo
 npm install
 cp .env.example .env   # fill in the three keys + CONTRACT_ADDRESS
 ```
+
+### Environment setup — `.env` loading (verified 28 Nov 2026)
+
+All entry points (`npm run demo`, `npm run deploy:contract`,
+`npm run check:gates`, `npm run test:contract`) load the repo-root `.env`
+file via `dotenv` before reading any variable. Verified: with no shell
+exports at all, `npm run check:gates` picked up `GENLAYER_PRIVATE_KEY`
+and `CONTRACT_ADDRESS` from `.env` and ran its live checks against
+Studio Next. (Before 28 Nov 2026 this did NOT work — nothing loaded
+`.env`, so the file was silently ignored.)
+
+**Explicit export step (fallback, if `.env` loading ever fails):**
+
+```bash
+set -a; source .env; set +a   # export every line of .env into the shell
+npm run demo
+# or export just the keys you need:
+export GENLAYER_PRIVATE_KEY=0x... CONTRACT_ADDRESS=0x...
+npm run demo
+```
+
+Never commit `.env` — it is gitignored. Keys are throwaway test keys only.
 
 **1. Fund the test accounts (all free, all testnet)**
 
@@ -121,6 +179,27 @@ Expected output: room opens → escrow deposited → dispute filed → GenLayer
 verdict printed → verdict split co-signed → room closed. The whole run is
 also exercised contract-only via `npx tsx scripts/test-contract.ts`.
 
+### Settlement-gate checks
+
+```bash
+npm run check:gates
+```
+
+Runs `scripts/check-settlement-gates.ts` — 18 checks, all must pass:
+
+- **Pure (15, no network):** failed judge tx blocks; failed file tx
+  blocks; unknown resultName blocks (fail-closed); missing / non-numeric /
+  out-of-range / fractional / empty percentage blocks; `release` carrying
+  50 and `refund` carrying 0 block; unjudged dispute blocks; missing
+  verdict blocks; valid `split 50`, `release 0`, `refund 100` allow.
+- **Live (3, Studio Next):** a real unjudged dispute blocks; a real
+  failed judge tx (judging a nonexistent dispute, receipt
+  `FINISHED_WITH_ERROR`) blocks; a real judged verdict (split, 50%)
+  allows settlement — stopping at the Yellow boundary, because the
+  sandbox faucet is down (HTTP 503) and no live room exists to settle.
+
+Result on 28 Nov 2026: **18/18 passed.**
+
 ## How it works
 
 ### The court contract — `contracts/internet_court_dispute.py`
@@ -133,14 +212,32 @@ A GenLayer Intelligent Contract (Python, boilerplate style from
 - `judge_dispute(dispute_id)` — runs the judge: the claim, evidence, and room
   state go to `gl.nondet.exec_prompt(..., response_format="json")`, wrapped in
   `gl.eq_principle.prompt_comparative` with the criterion
-  *"The value of verdict has to match"*, so independent validators must agree
-  on the verdict. The verdict is stored on-chain.
+  *"The values of verdict and split_buyer_pct have to match"*, so
+  independent validators must agree on the verdict AND on the percentage
+  that controls payment. The contract then validates strictly: the
+  percentage must be a JSON integer 0–100, `release` must carry 0 and
+  `refund` must carry 100 — anything else is rejected, never silently
+  rewritten, so the stored percentage is exactly the agreed one.
 - `get_dispute` / `get_verdict` — read-only views.
 
 Verdict rules are in the prompt: clear delivery → `release` (0% to buyer);
 clear non-delivery → `refund` (100% to buyer); partial/late/mixed →
-`split` with a fair percentage. The contract normalizes `release`/`refund`
-percentages and rejects out-of-range values.
+`split` with a fair percentage.
+
+### The settlement gate — `demo/settlement-gate.ts`
+
+`demo/settle-dispute.ts` does not settle on a tx hash or a raw verdict.
+Before any Yellow call it runs `assertSettlementAllowed()`, which requires
+all three: (1) both court transactions succeeded — receipt resultName
+exactly `FINISHED_WITH_RETURN` for `file_dispute` and `judge_dispute`
+(a failed consensus call still returns a tx hash, with resultName
+`FINISHED_WITH_ERROR`, and never throws — so the receipt must be checked);
+(2) the dispute is judged (`status == "judged"`); (3) the verdict carries
+a valid percentage — integer 0–100, consistent with the label
+(`release` → 0, `refund` → 100). Any failure throws with the exact reason
+and no Yellow call happens. The gate is fail-closed: unknown resultNames
+and malformed verdicts block. The percentage passed to
+`settleByVerdict()` is the gate-validated one, not the raw field.
 
 ### The room — `demo/yellow.ts`
 
@@ -198,6 +295,7 @@ internet-court-yellow-demo/
     internet_court_dispute.py     # GenLayer Intelligent Contract (the judge)
   demo/
     settle-dispute.ts             # full CLI: room -> dispute -> verdict -> settle
+    settlement-gate.ts            # settlement gate: court txs + valid % required
     yellow.ts                     # Yellow room helpers (connect/fund/room/settle)
     genlayer.ts                   # Studio Next deploy/call helpers
     evidence/
@@ -206,6 +304,7 @@ internet-court-yellow-demo/
   scripts/
     deploy-contract.ts            # deploy the court contract
     test-contract.ts              # contract-only live smoke test
+    check-settlement-gates.ts     # steward checks: 18/18 (15 pure + 3 live)
   video/
     script-45s.md                 # shot list + voiceover for the 45s demo video
 ```

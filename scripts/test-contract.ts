@@ -1,5 +1,7 @@
 // Live smoke test of the deployed dispute contract on Studio Next.
 // Usage: GENLAYER_PRIVATE_KEY=0x... CONTRACT_ADDRESS=0x... npx tsx scripts/test-contract.ts
+// (or put both in .env — dotenv/config loads it; see README "Environment setup").
+import "dotenv/config";
 import { writeContract, readContract } from "../demo/genlayer.js";
 import type { Hex } from "viem";
 

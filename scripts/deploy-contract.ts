@@ -2,6 +2,9 @@
 // Headless: signs with a THROWAWAY test key funded via sim_fundAccount.
 // Usage: GENLAYER_PRIVATE_KEY=0x... npm run deploy:contract
 // Prints CONTRACT_ADDRESS=<address> on success.
+// .env loading: "dotenv/config" reads the repo-root .env into process.env,
+// so `cp .env.example .env` + `npm run deploy:contract` works without exports.
+import "dotenv/config";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

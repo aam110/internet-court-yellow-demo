@@ -15,6 +15,11 @@
 //   npm run demo
 //
 // Keys are THROWAWAY test keys only. Nothing here touches mainnet or real money.
+//
+// .env loading: "dotenv/config" reads the .env file in the repo root into
+// process.env (verified — see README "Environment setup"). Without it,
+// `npm run demo` after `cp .env.example .env` silently ignored the file.
+import "dotenv/config";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,6 +38,7 @@ import {
   ASSET,
 } from "./yellow.js";
 import { writeContract, readContract } from "./genlayer.js";
+import { assertSettlementAllowed } from "./settlement-gate.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -103,7 +109,7 @@ async function main() {
         `0 ${ASSET}`,
       ],
     });
-    console.log("file tx:", filed.txHash);
+    console.log("file tx:", filed.txHash, `(result ${filed.resultName})`);
 
     console.log("\n== 6. GenLayer validators judge (LLM consensus) ==");
     const judged = await writeContract({
@@ -112,7 +118,7 @@ async function main() {
       functionName: "judge_dispute",
       args: [disputeId],
     });
-    console.log("judge tx:", judged.txHash);
+    console.log("judge tx:", judged.txHash, `(result ${judged.resultName})`);
     const verdict = await readContract<{
       status: string;
       verdict: string;
@@ -125,12 +131,24 @@ async function main() {
     });
     console.log("VERDICT:", JSON.stringify(verdict, null, 2));
 
+    // SETTLEMENT GATE (steward requirement): settlement is impossible
+    // unless BOTH court transactions succeeded AND the returned verdict
+    // is judged with a valid percentage. This throws — before any Yellow
+    // call — on a failed tx, an unjudged dispute, or an invalid
+    // percentage. The percentage used below is the gate-validated one.
+    const buyerPct = assertSettlementAllowed({
+      fileTxResultName: filed.resultName,
+      judgeTxResultName: judged.resultName,
+      verdict,
+    });
+    console.log(`\nGATE PASSED: court txs succeeded, verdict judged, ${buyerPct}% to buyer.`);
+
     console.log("\n== 7. Co-sign the verdict split + close the room ==");
     const split = await settleByVerdict(
       buyer,
       seller,
       room.appSessionId,
-      Number(verdict.split_buyer_pct),
+      buyerPct,
       disputeId,
     );
     const closed = await getSession(buyer.client, room.appSessionId);

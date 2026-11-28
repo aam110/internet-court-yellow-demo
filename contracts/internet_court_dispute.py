@@ -19,6 +19,15 @@ Yellow room: "release" pays the seller, "refund" pays the buyer back, and
 "split" divides the funds. GenLayer decides the money; Yellow holds and
 releases it. Neither side can settle unilaterally.
 
+Validator agreement covers the WHOLE money decision, not just the label:
+the equivalence principle requires validators to agree on BOTH the verdict
+and `split_buyer_pct` — the percentage that controls payment. The contract
+then stores exactly the agreed percentage: `release` must carry 0 and
+`refund` must carry 100, and any other combination is rejected rather than
+silently rewritten, so the percentage that moves the money is always the
+one the validators agreed on. A percentage that is not a JSON integer
+0-100 is rejected the same way.
+
 Pattern: GenLayer boilerplate style (genlayer-project-boilerplate,
 contracts/football_bets.py) — prompt_comparative judge, JSON output.
 """
@@ -79,6 +88,11 @@ RULES:
 - If delivery was partial, late, or of mixed quality, verdict is "split"
   and split_buyer_pct is your fair percentage (0-100) of the funds going
   back to the buyer.
+- split_buyer_pct is part of the verdict the validators must agree on:
+  it must be an integer 0-100, and it must already match the verdict
+  (0 for "release", 100 for "refund"). The contract rejects any verdict
+  whose percentage does not match — the percentage that controls payment
+  is never rewritten after agreement.
 - Base the verdict ONLY on the evidence above. Do not invent facts.
 - Keep the reasoning to 1-3 short sentences.
 
@@ -97,7 +111,10 @@ This result should be perfectly parsable by a JSON parser without errors."""
 
         result_json = json.loads(
             gl.eq_principle.prompt_comparative(
-                get_verdict, "The value of verdict has to match"
+                get_verdict,
+                # The percentage controls the payment, so validator
+                # agreement must cover it too — not just the verdict label.
+                "The values of verdict and split_buyer_pct have to match",
             )
         )
         return result_json
@@ -147,22 +164,41 @@ This result should be perfectly parsable by a JSON parser without errors."""
             dispute.seller_deposit,
         )
 
-        verdict_value = str(verdict["verdict"])
-        if verdict_value not in ("release", "refund", "split"):
+        verdict_value = verdict.get("verdict")
+        if not isinstance(verdict_value, str) or verdict_value not in (
+            "release",
+            "refund",
+            "split",
+        ):
             raise Exception("Invalid verdict returned by judge")
-        pct = int(verdict["split_buyer_pct"])
-        if pct < 0 or pct > 100:
-            raise Exception("Invalid split percentage returned by judge")
-        # Normalize: release/refund pin the percentage.
-        if verdict_value == "release":
-            pct = 0
-        elif verdict_value == "refund":
-            pct = 100
+        # Strict percentage check: it must be a JSON integer 0-100.
+        # (type() is used, not isinstance(), so booleans and floats are
+        # rejected too — True is an int subclass, 50.5 would truncate.)
+        pct = verdict.get("split_buyer_pct")
+        if type(pct) is not int or pct < 0 or pct > 100:
+            raise Exception(
+                "Invalid split percentage returned by judge: "
+                "must be an integer 0-100"
+            )
+        # The stored percentage must be EXACTLY the validator-agreed one.
+        # release/refund pin the percentage, so a mismatched value is a
+        # broken verdict and is rejected — never silently rewritten.
+        if verdict_value == "release" and pct != 0:
+            raise Exception(
+                "Invalid verdict: release must carry split_buyer_pct 0"
+            )
+        if verdict_value == "refund" and pct != 100:
+            raise Exception(
+                "Invalid verdict: refund must carry split_buyer_pct 100"
+            )
+        reasoning = verdict.get("reasoning")
+        if not isinstance(reasoning, str):
+            raise Exception("Invalid reasoning returned by judge")
 
         dispute.status = "judged"
         dispute.verdict = verdict_value
         dispute.split_buyer_pct = str(pct)
-        dispute.reasoning = str(verdict["reasoning"])
+        dispute.reasoning = reasoning
         self.disputes[dispute_id] = dispute
 
     @gl.public.view
